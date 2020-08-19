@@ -8,21 +8,25 @@ public class BedWarsTeam extends Team {
     private TeamData teamData;
 
     public BedWarsTeam(TeamData teamData) {
-        super(teamData.name, teamData.playerNum);
+        super(teamData.name, teamData.getPlayerNum());
         this.teamData = teamData;
+        teamData.addChangeTask(() -> {
+            setMaxPlayer(teamData.getPlayerNum());
+            setTeamName(teamData.name);
+        });
     }
 
     public Location getSpawnLocation() {
-        return teamData.spawnLocation;
+        return teamData.getSpawnLocation();
     }
 
     public String getDisplayName() {
-        return teamData.displayName;
+        return teamData.getDisplayName();
     }
 
     @Override
     public int getMaxPlayer() {
-        return teamData.playerNum;
+        return teamData.getPlayerNum();
     }
 
     public TeamData getTeamData() {

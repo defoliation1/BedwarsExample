@@ -16,9 +16,7 @@ import org.bukkit.event.entity.EntityDamageEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
 import pers.defoliation.minigame.config.AnnotationConfig;
 import pers.defoliation.minigame.conversation.Conversation;
-import pers.defoliation.minigame.conversation.request.RequestBlock;
-import pers.defoliation.minigame.conversation.request.RequestInteger;
-import pers.defoliation.minigame.conversation.request.RequestString;
+import pers.defoliation.minigame.conversation.request.*;
 import pers.defoliation.minigame.game.Game;
 import pers.defoliation.minigame.game.GameState;
 import pers.defoliation.minigame.group.GamePlayerGroup;
@@ -32,6 +30,7 @@ import pers.defoliation.minigame.util.Countdown;
 import pers.defoliation.minigame.util.Title;
 
 import java.io.File;
+import java.util.Optional;
 import java.util.concurrent.atomic.AtomicInteger;
 
 public class BedWarsGame extends Game {
@@ -185,67 +184,121 @@ public class BedWarsGame extends Game {
         if (strings == null || strings.length == 0) {
             Conversation conversation = Conversation.newConversation(BedWars.INSTANCE);
             if (locationManager.getUnsetLocation().contains("lobby")) {
-                conversation.addRequest(RequestBlock.newRequestBlock()
-                        .setOnStart(request -> player.sendMessage("请点击方块确定等待大厅的位置"))
-                        .setTimeout(120)
-                        .setTimeoutMessage("设置时间已过期")
-                        .setOnComplete(blockRequest -> {
-                            Block block = blockRequest.getResult().get();
-                            locationManager.putLocation("lobby", block.getLocation().add(0, 1, 0));
-                            player.sendMessage("设置成功，玩家重生将被设置为钻石3秒");
-                            block.setType(Material.DIAMOND_BLOCK);
-                            Bukkit.getScheduler().runTaskLater(BedWars.INSTANCE, () -> locationManager.getLocation("lobby").getBlock().setType(Material.AIR), 20 * 3);
-                        })
-                );
+                conversation.addRequest(setLobby(player));
             }
             if (group.getTeams().size() < 2) {
                 for (int i = group.getTeams().size(); i < 2; i++) {
-                    int finalI = i;
-                    conversation.addRequest(RequestString.newRequestString()
-                            .setOnStart(request -> {
-                                player.sendMessage("现在开始设置队伍 " + finalI + 1);
-                                player.sendMessage("请输入队伍名");
-                            })
-                            .setTimeout(120)
-                            .setTimeoutMessage("设置时间已过期")
-                            .setOnComplete(stringRequest -> {
-                                String s = stringRequest.getResult().get();
-                                TeamData teamData = new TeamData(s);
-                                conversation.insertRequest(
-                                        RequestString.newRequestString()
-                                                .setOnStart(request -> player.sendMessage("请输入队伍的显示名称"))
-                                                .setTimeout(120)
-                                                .setTimeoutMessage("设置时间已过期")
-                                                .setOnComplete(displayName -> teamData.displayName = displayName.getResult().get())
-                                        , RequestInteger.newRequestInteger()
-                                                .setOnStart(request -> player.sendMessage("请输入队伍的玩家数量"))
-                                                .setTimeout(120)
-                                                .setTimeoutMessage("设置时间已过期")
-                                                .setOnComplete(playerNum -> teamData.playerNum = playerNum.getResult().get())
-                                        , RequestBlock.newRequestBlock()
-                                                .setOnStart(request -> player.sendMessage("请点击方块确定队伍位置"))
-                                                .setTimeout(120)
-                                                .setTimeoutMessage("设置时间已过期")
-                                                .setOnComplete(blockRequest -> {
-                                                    Block block = blockRequest.getResult().get();
-                                                    Location location = block.getLocation().add(0, 1, 0);
-                                                    teamData.spawnLocation = location;
-                                                    player.sendMessage("设置成功，玩家重生的位置将被设置为钻石3秒");
-                                                    location.getBlock().setType(Material.DIAMOND_BLOCK);
-                                                    Bukkit.getScheduler().runTaskLater(BedWars.INSTANCE, () -> location.getBlock().setType(Material.AIR), 20 * 3);
-                                                })
-                                );
-                                if (teamData.spawnLocation != null && teamData.playerNum != 0 && teamData.displayName != null) {
-                                    player.sendMessage("队伍添加成功");
-                                    group.addTeam(new BedWarsTeam(teamData));
-                                } else {
-                                    player.sendMessage("队伍添加失败");
-                                }
-                            })
-                    );
+                    conversation.addRequest(addTeam(player));
+                }
+            }
+
+            conversation.start(player);
+        } else {
+            if (strings.length == 1) {
+                if ("lobby".equalsIgnoreCase(strings[0])) {
+                    Conversation conversation = Conversation.newConversation(BedWars.INSTANCE);
+                    conversation.addRequest(setLobby(player));
+                    conversation.start(player);
+                } else if ("addTeam".equalsIgnoreCase(strings[0])) {
+                    Conversation conversation = Conversation.newConversation(BedWars.INSTANCE);
+                    conversation.addRequest(addTeam(player));
+                    conversation.start(player);
                 }
             }
         }
+    }
+
+    private Request setLobby(Player player) {
+        return getRequest(RequestBlock.newRequestBlock(), "请点击方块确定等待大厅的位置")
+                .setOnComplete(blockRequest -> {
+                    Block block = blockRequest.getResult().get();
+                    locationManager.putLocation("lobby", block.getLocation().add(0, 1, 0));
+                    player.sendMessage("设置成功，玩家重生将被设置为钻石3秒");
+                    block.setType(Material.DIAMOND_BLOCK);
+                    Bukkit.getScheduler().runTaskLater(BedWars.INSTANCE, () -> locationManager.getLocation("lobby").getBlock().setType(Material.AIR), 20 * 3);
+                });
+    }
+
+    private Request addTeam(Player player) {
+        return getRequest(RequestString.newRequestString(), "现在开始添加队伍").setOnComplete(stringRequest -> {
+            String s = stringRequest.getResult().get();
+            TeamData teamData = new TeamData(s);
+            stringRequest.getConversation().insertRequest(
+                    setTeamDisplayName(player, teamData)
+                    , setTeamNum(player, teamData)
+                    , setTeamRespawnLocation(player, teamData)
+                    , setTeamBedLocation(player, teamData)
+                    , new RequestBase<Object>() {
+                        @Override
+                        public void start() {
+                            if (teamData.getSpawnLocation() != null && teamData.getPlayerNum() != 0 && teamData.getDisplayName() != null) {
+                                player.sendMessage("队伍添加成功");
+                                group.addTeam(new BedWarsTeam(teamData));
+                            } else {
+                                player.sendMessage("队伍添加失败");
+                            }
+                            setCompleted(true);
+                        }
+
+                        @Override
+                        public void reset() {
+                        }
+
+                        @Override
+                        public Optional<Object> getResult() {
+                            return Optional.empty();
+                        }
+                    }
+            );
+        });
+    }
+
+    private Request setTeamDisplayName(Player player, TeamData teamData) {
+        return getRequest(RequestString.newRequestString(), "请输入队伍的显示名称")
+                .setOnComplete(displayName -> {
+                    teamData.setDisplayName(displayName.getResult().get());
+                    player.sendMessage("设置成功");
+                });
+    }
+
+    private Request setTeamNum(Player player, TeamData teamData) {
+        return getRequest(RequestInteger.newRequestInteger(), "请输入队伍的玩家数量")
+                .setOnComplete(playerNum -> {
+                    teamData.setPlayerNum(playerNum.getResult().get());
+                    player.sendMessage("设置成功");
+                });
+    }
+
+    private Request setTeamRespawnLocation(Player player, TeamData teamData) {
+        return getRequest(RequestBlock.newRequestBlock(), "请选择一个方块确定队伍重生位置")
+                .setOnComplete(request -> {
+                    Block block = request.getResult().get();
+                    Location location = block.getLocation().add(0, 1, 0);
+                    teamData.setSpawnLocation(location);
+                    player.sendMessage("设置成功，玩家重生的位置将被设置为钻石3秒");
+                    location.getBlock().setType(Material.DIAMOND_BLOCK);
+                    Bukkit.getScheduler().runTaskLater(BedWars.INSTANCE, () -> location.getBlock().setType(Material.AIR), 20 * 3);
+                });
+    }
+
+    private Request setTeamBedLocation(Player player, TeamData teamData) {
+        return getRequest(RequestBlock.newRequestBlock(), "请为这个队伍选择一个床")
+                .setOnComplete(request -> {
+                    Block block = request.getResult().get();
+                    if (block.getType() != Material.BED_BLOCK) {
+                        player.sendMessage("你选择的方块不是床，请重新选择");
+                        request.getConversation().insertRequest(setTeamRespawnLocation(player, teamData));
+                        return;
+                    }
+                    teamData.setBedLocation(block.getLocation());
+                    player.sendMessage("设置成功");
+                });
+    }
+
+    private static <T> Request<T> getRequest(Request<T> request, String startMessage) {
+        return request.setTimeout(120)
+                .setOnStart(request1 -> request1.getConversation().getPlayer().sendMessage(startMessage))
+                .setTimeoutMessage("设置时间已过期");
     }
 
 }

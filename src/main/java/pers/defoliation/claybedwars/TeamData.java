@@ -3,21 +3,70 @@ package pers.defoliation.claybedwars;
 import org.bukkit.Location;
 import pers.defoliation.minigame.config.Config;
 
+import java.util.ArrayList;
+import java.util.List;
+
 public class TeamData {
 
-    public String name;
+    private List<Runnable> onChange = new ArrayList<>();
+
+    public final String name;
 
     public TeamData(String name) {
         this.name = name;
     }
 
+    public void addChangeTask(Runnable runnable){
+        this.onChange.add(runnable);
+    }
+
     @Config
-    public String displayName;
+    private String displayName;
     @Config
-    public int playerNum;
+    private int playerNum;
     @Config
-    public Location spawnLocation;
+    private Location spawnLocation;
     @Config
-    public Location bedLocation;
+    private Location bedLocation;
+
+    public String getDisplayName() {
+        return displayName;
+    }
+
+    public void setDisplayName(String displayName) {
+        this.displayName = displayName;
+        callChange();
+    }
+
+    public int getPlayerNum() {
+        return playerNum;
+    }
+
+    public void setPlayerNum(int playerNum) {
+        this.playerNum = playerNum;
+        callChange();
+    }
+
+    public Location getSpawnLocation() {
+        return spawnLocation;
+    }
+
+    public void setSpawnLocation(Location spawnLocation) {
+        this.spawnLocation = spawnLocation;
+        callChange();
+    }
+
+    public Location getBedLocation() {
+        return bedLocation;
+    }
+
+    public void setBedLocation(Location bedLocation) {
+        this.bedLocation = bedLocation;
+        callChange();
+    }
+
+    private void callChange(){
+        onChange.forEach(Runnable::run);
+    }
 
 }
