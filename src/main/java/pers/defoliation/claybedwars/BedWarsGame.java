@@ -1,9 +1,6 @@
 package pers.defoliation.claybedwars;
 
-import org.bukkit.Bukkit;
-import org.bukkit.GameMode;
-import org.bukkit.Location;
-import org.bukkit.Material;
+import org.bukkit.*;
 import org.bukkit.block.Block;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.entity.Entity;
@@ -14,6 +11,8 @@ import org.bukkit.event.block.BlockPlaceEvent;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.event.entity.EntityDamageEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
+import org.bukkit.inventory.ItemStack;
+import org.bukkit.inventory.meta.LeatherArmorMeta;
 import pers.defoliation.minigame.config.AnnotationConfig;
 import pers.defoliation.minigame.conversation.Conversation;
 import pers.defoliation.minigame.conversation.request.*;
@@ -27,9 +26,14 @@ import pers.defoliation.minigame.player.GamePlayer;
 import pers.defoliation.minigame.player.PlayerState;
 import pers.defoliation.minigame.state.State;
 import pers.defoliation.minigame.util.Countdown;
+import pers.defoliation.minigame.util.IndexedItemStack;
 import pers.defoliation.minigame.util.Title;
 
 import java.io.File;
+import java.lang.reflect.Field;
+import java.lang.reflect.Modifier;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -228,6 +232,7 @@ public class BedWarsGame extends Game {
                     , setTeamNum(player, teamData)
                     , setTeamRespawnLocation(player, teamData)
                     , setTeamBedLocation(player, teamData)
+                    , setTeamColor(player, teamData)
                     , new RequestBase<Object>() {
                         @Override
                         public void start() {
@@ -251,6 +256,45 @@ public class BedWarsGame extends Game {
                     }
             );
         });
+    }
+
+    private Request setTeamColor(Player player, TeamData teamData) {
+        return getRequest(RequestChooseItemStack.newRequestChooseItemStack(18), "请选择队伍的颜色")
+                .addItem(getColorLeather(getCanChooseColor()))
+                .setOnComplete(request -> {
+                    IndexedItemStack indexedItemStack = request.getResult().get();
+                    ItemStack itemStack = indexedItemStack.getItemStack();
+                    LeatherArmorMeta leatherArmorMeta = (LeatherArmorMeta) itemStack.getItemMeta();
+                    Color color = leatherArmorMeta.getColor();
+                    teamData.setColor(color);
+                    player.sendMessage("设置成功");
+                })
+                ;
+    }
+
+    private ItemStack[] getColorLeather(List<Color> colors) {
+        List<ItemStack> itemStacks = new ArrayList<>();
+        for (Color color : colors) {
+            ItemStack itemStack = new ItemStack(Material.LEATHER_CHESTPLATE);
+            LeatherArmorMeta leatherArmorMeta = (LeatherArmorMeta) itemStack.getItemMeta();
+            leatherArmorMeta.setColor(color);
+            itemStacks.add(itemStack);
+        }
+        return itemStacks.toArray(new ItemStack[0]);
+    }
+
+    private List<Color> getCanChooseColor() {
+        List<Color> colorList = new ArrayList<>();
+        for (Field field : Color.class.getFields()) {
+            if (Modifier.isStatic(field.getModifiers()) && Modifier.isFinal(field.getModifiers())) {
+                try {
+                    colorList.add((Color) field.get(null));
+                } catch (IllegalAccessException e) {
+                    e.printStackTrace();
+                }
+            }
+        }
+        return colorList;
     }
 
     private Request setTeamDisplayName(Player player, TeamData teamData) {
@@ -295,9 +339,9 @@ public class BedWarsGame extends Game {
                 });
     }
 
-    private static <T> Request<T> getRequest(Request<T> request, String startMessage) {
-        return request.setTimeout(120)
-                .setOnStart(request1 -> request1.getConversation().getPlayer().sendMessage(startMessage))
+    private static <T extends Request> T getRequest(T request, String startMessage) {
+        return (T) request.setTimeout(120)
+                .setOnStart(request1 -> ((Request) request1).getConversation().getPlayer().sendMessage(startMessage))
                 .setTimeoutMessage("设置时间已过期");
     }
 

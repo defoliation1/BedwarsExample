@@ -35,5 +35,5 @@ repositories {
 
 dependencies {
     testCompile group: 'junit', name: 'junit', version: '4.12'
-    implementation(group: "pers.defoliation",name:"MiniGame",version: "2020.08.17.1")
+    implementation(group: "pers.defoliation",name:"MiniGame",version: "2020.08.18.1")
 }

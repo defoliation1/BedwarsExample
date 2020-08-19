@@ -1,5 +1,6 @@
 package pers.defoliation.claybedwars;
 
+import org.bukkit.Color;
 import org.bukkit.Location;
 import pers.defoliation.minigame.config.Config;
 
@@ -16,7 +17,7 @@ public class TeamData {
         this.name = name;
     }
 
-    public void addChangeTask(Runnable runnable){
+    public void addChangeTask(Runnable runnable) {
         this.onChange.add(runnable);
     }
 
@@ -28,6 +29,8 @@ public class TeamData {
     private Location spawnLocation;
     @Config
     private Location bedLocation;
+    @Config
+    private Color color;
 
     public String getDisplayName() {
         return displayName;
@@ -65,8 +68,15 @@ public class TeamData {
         callChange();
     }
 
-    private void callChange(){
+    private void callChange() {
         onChange.forEach(Runnable::run);
     }
 
+    public Color getColor() {
+        return color;
+    }
+
+    public void setColor(Color color) {
+        this.color = color;
+    }
 }
