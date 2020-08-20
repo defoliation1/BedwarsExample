@@ -24,8 +24,6 @@ public class TeamData {
     @Config
     private String displayName;
     @Config
-    private int playerNum;
-    @Config
     private Location spawnLocation;
     @Config
     private Location bedLocation;
@@ -38,15 +36,6 @@ public class TeamData {
 
     public void setDisplayName(String displayName) {
         this.displayName = displayName;
-        callChange();
-    }
-
-    public int getPlayerNum() {
-        return playerNum;
-    }
-
-    public void setPlayerNum(int playerNum) {
-        this.playerNum = playerNum;
         callChange();
     }
 

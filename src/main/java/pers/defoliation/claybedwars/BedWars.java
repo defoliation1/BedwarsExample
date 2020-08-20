@@ -45,6 +45,8 @@ public class BedWars extends JavaPlugin {
                         event.setCancelled(true);
                 }, ignoreWhenGameEnd());
         bedWarsGameManager = new BedWarsGameManager(this);
+
+
     }
 
     public static <T extends Event> Function<T, Boolean> ignoreWhenGameEnd() {
