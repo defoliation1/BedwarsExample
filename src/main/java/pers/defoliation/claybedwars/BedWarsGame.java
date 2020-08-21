@@ -87,9 +87,49 @@ public class BedWarsGame extends Game {
                 inventory.setBoots(boot);
             }).build();
 
+    private static final Countdown<BedWarsGame> lobbyCountdown = Countdown.<BedWarsGame>getBuilder(BedWars.INSTANCE)
+            .whenEnd(game -> {
+                game.gameState = GameState.RUNNING;
+                game.getGroup().getAlivePlayers().forEach(player -> {
+                    playerGameState.apply(player);
+                    player.teleport(game.getGroup().getTeamByPlayer(player).getSpawnLocation());
+                });
+            })
+            .addPerSecondTask((game, atomicInteger) -> {
+                if (game.state != GameState.WAITING) {
+                    atomicInteger.set(60);
+                    return;
+                }
+                if (game.getGroup().getPlayers().size() < game.getGroup().getTeams().size()) {
+                    atomicInteger.set(60);
+                } else if (atomicInteger.get() > 5 && game.getGroup().getPlayers().size() == game.getGroup().getMaxPlayer()) {
+                    atomicInteger.set(5);
+                }
+                game.getGroup().getAlivePlayers().forEach(player -> player.setLevel(atomicInteger.get()));
+            })
+            .setSecondTask((game, atomicInteger) -> game.getGroup().getAlivePlayers()
+                            .forEach(player -> Title.as("等待复活", String.format("还有 %d 秒", atomicInteger.get())).send(player))
+                    , 50, 40, 30, 20, 10, 5, 4, 3, 2, 1)
+            .build();
+
+    private static final Countdown<GamePlayer> playerRespawnCountdown = Countdown.<GamePlayer>getBuilder(BedWars.INSTANCE)
+            .whenEnd(player -> {
+                BedWarsTeam teamByPlayer = ((BedWarsGame) player.playingGame()).getGroup().getTeamByPlayer(player);
+                player.getPlayer().teleport(teamByPlayer.getSpawnLocation());
+                playerGameState.apply(player.getPlayer());
+            })
+            .addPerSecondTask((player, atomicInteger) -> {
+                BedWarsTeam teamByPlayer = ((BedWarsGame) player.playingGame()).getGroup().getTeamByPlayer(player);
+                if (teamByPlayer.existBed()) {
+                    Title.as("等待复活", String.format("还有 %d 秒", atomicInteger.get())).send(player.getPlayer());
+                } else {
+                    BedWarsGame.playerRespawnCountdown.cancel(player);
+                }
+            })
+            .build();
+
     private TeamBalanceGroup<BedWarsTeam> group = new TeamBalanceGroup();
     private GameState gameState = GameState.WAITING;
-    private Countdown startTime;
     private MiniGameEventHandler waitEventHandler;
     private MiniGameEventHandler runningEventHandler;
     private LocationManager locationManager = new LocationManager();
@@ -113,8 +153,6 @@ public class BedWarsGame extends Game {
         ConfigurationSection location = getGameConfig().getConfigurationSection("location");
         locationManager.load(location);
 
-        setStartTime();
-
         waitEventHandler = new MiniGameEventHandler(BedWars.INSTANCE);
         waitEventHandler.addHandle(EntityDamageEvent.class, MiniGameEventHandler.cancel(), this::waitIgnore)
                 .addHandle(BlockBreakEvent.class, MiniGameEventHandler.cancel(), this::waitIgnore)
@@ -128,15 +166,12 @@ public class BedWarsGame extends Game {
                 Player player = (Player) entity;
                 GamePlayer gamePlayer = GamePlayer.getGamePlayer(player);
                 if (!gamePlayer.isSpectator() && event.getFinalDamage() >= player.getHealth()) {
-                    BedWarsTeam team = group.getTeamByPlayer(player);
-                    //TODO
-                    spectatorState.apply(player);
-                    Countdown countdown = new Countdown(() -> 10, () -> team.existBed())
-                            .addPerSecondTask(second -> Title.as("等待复活", String.format("还有 %d 秒")).send(player));
-                    Bukkit.getScheduler().runTaskTimer(BedWars.INSTANCE, () -> countdown.second(), 20, 20);
+                    playerRespawnCountdown.start(10, gamePlayer);
                 }
             }
         }, this::runningIgnore);
+
+        lobbyCountdown.start(60, this);
 
         group.addJoinTask(player -> {
             joinState.apply(player);
@@ -174,23 +209,9 @@ public class BedWarsGame extends Game {
         return BedWars.INSTANCE.getDataFolder();
     }
 
-    private void setStartTime() {
-        startTime = Countdown.speedUpWhenFull(60, 5, group, group.getTeams().size())
-                .setSecondTask(0, () -> {
-                    gameState = GameState.RUNNING;
-                    startTime.resetCountdown();
-                    getGroup().getAlivePlayers().forEach(player -> playerGameState.apply(player));
-                })
-                .addPerSecondTask(Countdown.setLevel(() -> group.getAlivePlayers()))
-                .setSecondTask(Countdown.sendTitle(() -> group.getAlivePlayers(),
-                        (integer) -> Title.as("§e游戏即将开始", String.format("还有 %d 秒!", integer))),
-                        50, 40, 30, 20, 10, 5, 4, 3, 2, 1);
-    }
-
     public void addTeam(TeamData teamData) {
         group.addTeam(new BedWarsTeam(this, teamData));
         AnnotationConfig.save(teamData, getGameConfig().createSection("team." + teamData.name));
-        setStartTime();
     }
 
     public int getTeamSize() {
@@ -200,6 +221,7 @@ public class BedWarsGame extends Game {
     @Override
     public GameState preparing(AtomicInteger atomicInteger) {
         if (locationManager.allLocationIsReady() && group.getTeams().size() > 1) {
+
             return GameState.WAITING;
         }
         if (atomicInteger.get() % (20 * 30) == 0) {
@@ -210,7 +232,6 @@ public class BedWarsGame extends Game {
 
     @Override
     public GameState waiting(AtomicInteger atomicInteger) {
-        startTime.tick();
         return gameState;
     }
 
